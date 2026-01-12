@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0 # Disables incremental compilation to save disk space
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --tests --examples -- -D warnings
+
+  build:
+    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      fail-fast: false # Don't cancel all jobs if one fails
+      matrix:
+        channel: [stable]
+        os: [ubuntu, macos, windows]
+        # Only run beta/nightly on ubuntu to save resources/space
+        # include:
+        #   - channel: beta
+        #     os: ubuntu
+        #   - channel: nightly
+        #     os: ubuntu
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Rust
+        run: rustup default ${{ matrix.channel }}
+      - name: Rust Cache # Automatically manages disk space for artifacts
+        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          key: ${{ matrix.os }}-${{ matrix.channel }}
+      - name: Build
+        run: cargo build --all-targets
+      - name: Test
+        run: cargo test --tests --examples
+      # Uncomment if needed
+      # - name: Clean up large artifacts
+      #   if: always()
+      #   run: cargo clean --doc # Removes documentation artifacts which can be large
