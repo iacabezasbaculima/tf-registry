@@ -38,8 +38,12 @@ jobs:
           key: ${{ matrix.os }}-${{ matrix.channel }}
       - name: Build
         run: cargo build --all-targets
-      - name: Test
-        run: cargo test --tests --examples
+      - name: Unit Tests
+        run: cargo test --lib
+      - name: Integration Tests
+        run: cargo test --test integration
+      - name: E2E Tests
+        run: cargo test --test e2e
       # Uncomment if needed
       # - name: Clean up large artifacts
       #   if: always()
