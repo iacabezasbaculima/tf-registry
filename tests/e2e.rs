@@ -1,5 +1,5 @@
 use ngrok::config::ForwarderBuilder;
-use std::fs;
+use std::{fs, path::PathBuf};
 use tempfile::tempdir;
 use tf_registry::{EncodingKey, Registry};
 
@@ -13,7 +13,12 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
         .init();
 
     // 0. Check terraform binary is available
-    which::which("terraform").map_err(
+    let tf_bin = if cfg!(windows) {
+        "terraform.exe"
+    } else {
+        "terraform"
+    };
+    which::which(tf_bin).map_err(
         |_| "terraform CLI binary not found in PATH. Please install Terraform to run E2E tests.",
     )?;
 
@@ -67,7 +72,8 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
     tracing::info!("created temporary test directory: {:?}", td_path);
 
     // Replace ngrok domain
-    let fixture_source = format!("{}/{}.tf", TESTDATA_DIR, "provider");
+    // Use PathBuf to ensure the paths work on Windows systems where the separator is \
+    let fixture_source = PathBuf::from(TESTDATA_DIR).join("provider.tf");
     let fixture_content = fs::read_to_string(&fixture_source)?;
     let replaced_fixture = fixture_content.replace("{{NGROK_DOMAIN}}", &domain);
     let fixture_dest = td_path.join("main.tf");
@@ -84,7 +90,7 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
     }
 
     // 5. Run 'terraform version'
-    let tf_version_status = tokio::process::Command::new("terraform")
+    let tf_version_status = tokio::process::Command::new(tf_bin)
         .arg("version")
         .env("TF_LOG", "INFO")
         .env("TF_IN_AUTOMATION", "true")
@@ -100,7 +106,7 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
     }
 
     // 6. Run 'terraform init'
-    let tf_init_status = tokio::process::Command::new("terraform")
+    let tf_init_status = tokio::process::Command::new(tf_bin)
         .arg("init")
         .current_dir(td_path)
         .env("TF_LOG", "INFO")

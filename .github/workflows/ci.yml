@@ -37,6 +37,9 @@ jobs:
         with:
           key: ${{ matrix.os }}-${{ matrix.channel }}
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          # the wrapper can sometimes swallow the exit codes Rust e2e tests expect
+          terraform_wrapper: false
       - name: Build
         run: cargo build --all-targets
       - name: Unit Tests
