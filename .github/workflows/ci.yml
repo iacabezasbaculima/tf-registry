@@ -29,17 +29,34 @@ jobs:
         #   - channel: nightly
         #     os: ubuntu
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install Rust
         run: rustup default ${{ matrix.channel }}
       - name: Rust Cache # Automatically manages disk space for artifacts
         uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
           key: ${{ matrix.os }}-${{ matrix.channel }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          # the wrapper can sometimes swallow the exit codes Rust e2e tests expect
+          terraform_wrapper: false
       - name: Build
         run: cargo build --all-targets
-      - name: Test
-        run: cargo test --tests --examples
+      - name: Unit Tests
+        run: cargo test --lib
+      - name: Integration Tests
+        run: cargo test --test integration
+      - name: E2E Tests
+        run: cargo test --test e2e
+        env:
+          GH_APP_ID: ${{ secrets.GH_APP_ID }}
+          GH_APP_PRIVATE_KEY_BASE64: ${{ secrets.GH_APP_PRIVATE_KEY_BASE64 }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PUBLIC_KEY_BASE64: ${{ secrets.GPG_PUBLIC_KEY_BASE64 }}
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+          NGROK_DOMAIN: ${{ secrets.NGROK_DOMAIN }}
       # Uncomment if needed
       # - name: Clean up large artifacts
       #   if: always()

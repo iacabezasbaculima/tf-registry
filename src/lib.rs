@@ -714,13 +714,13 @@ impl RegistryBuilder {
                     .make_span_with(
                         DefaultMakeSpan::new()
                             .include_headers(true)
-                            .level(Level::INFO),
+                            .level(Level::DEBUG),
                     )
-                    .on_request(DefaultOnRequest::new().level(Level::INFO))
+                    .on_request(DefaultOnRequest::new().level(Level::DEBUG))
                     .on_response(
                         DefaultOnResponse::new()
                             .include_headers(true)
-                            .level(Level::INFO),
+                            .level(Level::DEBUG),
                     )
                     .on_failure(DefaultOnFailure::new()),
             )
