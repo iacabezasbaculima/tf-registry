@@ -1,7 +1,7 @@
 use ngrok::config::ForwarderBuilder;
 use std::fs;
 use tempfile::tempdir;
-use tf_registry::Registry;
+use tf_registry::{EncodingKey, Registry};
 
 const TESTDATA_DIR: &str = "./tests/e2e/testdata";
 
@@ -18,12 +18,13 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
     )?;
 
     // 1. Create tf-registry app
-    let token = std::env::var("GITHUB_TOKEN")?;
+    let app_id = std::env::var("GH_APP_ID")?.parse::<u64>()?;
+    let private_key_base64 = std::env::var("GH_APP_PRIVATE_KEY_BASE64")?;
     let gpg_key_id = std::env::var("GPG_KEY_ID")?;
     let gpg_public_key_base64 = std::env::var("GPG_PUBLIC_KEY_BASE64")?;
 
     let registry = Registry::builder()
-        .github_token(token)
+        .github_app(app_id, EncodingKey::Base64(private_key_base64))
         .gpg_signing_key(
             gpg_key_id,
             tf_registry::EncodingKey::Base64(gpg_public_key_base64),

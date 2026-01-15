@@ -45,6 +45,11 @@ jobs:
         run: cargo test --test integration
       - name: E2E Tests
         run: cargo test --test e2e
+        env:
+          GH_APP_ID: ${{ secrets.GH_APP_ID }}
+          GH_APP_PRIVATE_KEY_BASE64: ${{ secrets.GH_APP_PRIVATE_KEY_BASE64 }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PUBLIC_KEY_BASE64: ${{ secrets.GPG_PUBLIC_KEY_BASE64 }}
       # Uncomment if needed
       # - name: Clean up large artifacts
       #   if: always()
