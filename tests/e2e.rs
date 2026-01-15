@@ -40,7 +40,9 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
     let app = registry.create_router();
 
     // 2. Spawn the tf-registry server
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await?;
+    // On Windows, binding to 0.0.0.0 (all interfaces) sometimes causes issues when a loopback request is made via a tunnel.
+    // E.g.: ngrok::tunnel_ext: error connecting to upstream error=The requested address is not valid in its context. (os error 10049)
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
     tokio::spawn(async move {
         tracing::info!("tf-registry listening on http://{}", addr);
