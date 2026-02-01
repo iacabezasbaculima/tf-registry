@@ -72,6 +72,7 @@
 //!     .github_token("ghp_token")
 //!     .gpg_signing_key("KEY_ID".to_string(), EncodingKey::Pem("...".to_string()))
 //!     .providers_api_base_url("/custom/terraform/providers/v1/")
+//!     .modules_api_base_url("/custom/terraform/modules/v1/")
 //!     .build()
 //!     .await?;
 //! # Ok(())
@@ -107,6 +108,7 @@ pub use error::RegistryError;
 mod error;
 mod handlers;
 mod models;
+mod modules;
 
 use axum::{Router, routing::get};
 use base64::prelude::*;
@@ -127,6 +129,11 @@ use tracing::Level;
 ///
 /// This follows the Terraform Provider Registry Protocol specification.
 const PROVIDERS_API_BASE_URL: &str = "/terraform/providers/v1/";
+
+/// Default base URL path for the Terraform Provider Registry API endpoints.
+///
+/// This follows the Terraform Provider Registry Protocol specification.
+const MODULES_API_BASE_URL: &str = "/terraform/modules/v1/";
 
 // ============================================================================
 // Registry (Main Public Struct)
@@ -256,9 +263,21 @@ impl Registry {
                 get(handlers::find_provider_package),
             );
 
+        // See more https://developer.hashicorp.com/terraform/internals/module-registry-protocol
+        let modules_api = Router::new()
+            .route(
+                "/{namespace}/{name}/{system}/versions",
+                get(modules::list_module_versions),
+            )
+            .route(
+                "/{namespace}/{name}/{system}/{version}/download",
+                get(modules::download_module_version),
+            );
+
         Router::new()
             .route("/.well-known/terraform.json", get(handlers::discovery))
             .nest(&self.state.providers_api_base_url, providers_api)
+            .nest(&self.state.modules_api_base_url, modules_api)
             .layer(middleware)
             .with_state(self.state.clone())
     }
@@ -292,6 +311,10 @@ struct AppState {
     ///
     /// Default: "/terraform/providers/v1/"
     providers_api_base_url: String,
+    /// Base URL path for the modules API routes.
+    ///
+    /// Default: "/terraform/modules/v1/"
+    modules_api_base_url: String,
 }
 
 // ============================================================================
@@ -312,6 +335,7 @@ struct AppState {
 /// # Optional Configuration
 ///
 /// - Custom providers API base URL via [`providers_api_base_url()`](RegistryBuilder::providers_api_base_url)
+/// - Custom modules API base URL via [`modules_api_base_url()`](RegistryBuilder::modules_api_base_url)
 /// - Custom GitHub base URI via [`github_base_uri()`](RegistryBuilder::github_base_uri) (mainly for testing)
 ///
 /// # Examples
@@ -370,12 +394,29 @@ struct AppState {
 /// # Ok(())
 /// # }
 /// ```
+///
+/// ## Custom modules API URL
+///
+/// ```rust,no_run
+/// # use tf_registry::{Registry, EncodingKey};
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let registry = Registry::builder()
+///     .github_token("ghp_token")
+///     .gpg_signing_key("KEY".to_string(), EncodingKey::Pem("...".to_string()))
+///     .modules_api_base_url("/custom/api/v1/")
+///     .build()
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Default)]
 pub struct RegistryBuilder {
     base_uri: Option<String>,
     auth: Option<GitHubAuth>,
     gpg: Option<GPGSigningKey>,
     providers_api_base_url: Option<String>,
+    modules_api_base_url: Option<String>,
 }
 
 impl RegistryBuilder {
@@ -404,6 +445,34 @@ impl RegistryBuilder {
     /// ```
     pub fn providers_api_base_url(mut self, url: impl Into<String>) -> Self {
         self.providers_api_base_url = Some(url.into());
+        self
+    }
+
+    /// Sets the base URL path for the modules API routes.
+    ///
+    /// The URL will be automatically normalized to ensure it starts and ends with '/'.
+    ///
+    /// # Default
+    ///
+    /// If not set, defaults to `"/terraform/modules/v1/"`.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The base URL path.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use tf_registry::Registry;
+    /// # fn example() {
+    /// // All of these are equivalent:
+    /// Registry::builder().modules_api_base_url("/custom/api/v1/");
+    /// Registry::builder().modules_api_base_url("custom/api/v1");
+    /// Registry::builder().modules_api_base_url("/custom/api/v1");
+    /// # }
+    /// ```
+    pub fn modules_api_base_url(mut self, url: impl Into<String>) -> Self {
+        self.modules_api_base_url = Some(url.into());
         self
     }
 
@@ -586,6 +655,7 @@ impl RegistryBuilder {
         // Destructure self to take ownership of all fields
         let Self {
             providers_api_base_url,
+            modules_api_base_url,
             base_uri,
             auth,
             gpg,
@@ -595,7 +665,10 @@ impl RegistryBuilder {
         let auth = auth.ok_or(RegistryError::MissingAuth)?;
         let gpg = gpg.ok_or(RegistryError::MissingGPGSigningKey)?;
 
-        let providers_api_base_url = Self::normalize_providers_api_url(providers_api_base_url)?;
+        let providers_api_base_url =
+            Self::normalize_api_url(providers_api_base_url, PROVIDERS_API_BASE_URL)?;
+        let modules_api_base_url =
+            Self::normalize_api_url(modules_api_base_url, MODULES_API_BASE_URL)?;
 
         // Create GitHub client based on auth configuration
         let github = Self::create_octocrab_client(base_uri.clone(), &auth).await?;
@@ -609,6 +682,7 @@ impl RegistryBuilder {
             github,
             no_redirect_github,
             providers_api_base_url,
+            modules_api_base_url,
             gpg_key_id: gpg.key_id.clone(),
             gpg_public_key: gpg.get_public_key()?,
         };
@@ -785,14 +859,14 @@ impl RegistryBuilder {
         }
     }
 
-    /// Validates and normalizes the providers API base URL.
+    /// Validates and normalizes an API base URL.
     ///
     /// Ensures the URL:
     /// - Is not empty
     /// - Starts with '/'
     /// - Ends with '/'
-    fn normalize_providers_api_url(url: Option<String>) -> Result<String, RegistryError> {
-        let url = url.unwrap_or_else(|| PROVIDERS_API_BASE_URL.to_string());
+    fn normalize_api_url(url: Option<String>, default: &str) -> Result<String, RegistryError> {
+        let url = url.unwrap_or_else(|| default.to_string());
 
         if url.is_empty() {
             return Err(RegistryError::InvalidConfig(
@@ -1191,42 +1265,42 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_providers_api_url_default() {
-        let result = RegistryBuilder::normalize_providers_api_url(None).unwrap();
+    fn test_normalize_api_url_default() {
+        let result = RegistryBuilder::normalize_api_url(None, PROVIDERS_API_BASE_URL).unwrap();
         assert_eq!(result, PROVIDERS_API_BASE_URL);
     }
 
     #[test]
-    fn test_normalize_providers_api_url_with_slashes() {
+    fn test_normalize_api_url_with_slashes() {
         let result =
-            RegistryBuilder::normalize_providers_api_url(Some("/custom/api/".to_string())).unwrap();
+            RegistryBuilder::normalize_api_url(Some("/custom/api/".to_string()), "").unwrap();
         assert_eq!(result, "/custom/api/");
     }
 
     #[test]
-    fn test_normalize_providers_api_url_missing_leading_slash() {
+    fn test_normalize_api_url_missing_leading_slash() {
         let result =
-            RegistryBuilder::normalize_providers_api_url(Some("custom/api/".to_string())).unwrap();
+            RegistryBuilder::normalize_api_url(Some("custom/api/".to_string()), "").unwrap();
         assert_eq!(result, "/custom/api/");
     }
 
     #[test]
-    fn test_normalize_providers_api_url_missing_trailing_slash() {
+    fn test_normalize_api_url_missing_trailing_slash() {
         let result =
-            RegistryBuilder::normalize_providers_api_url(Some("/custom/api".to_string())).unwrap();
+            RegistryBuilder::normalize_api_url(Some("/custom/api".to_string()), "").unwrap();
         assert_eq!(result, "/custom/api/");
     }
 
     #[test]
-    fn test_normalize_providers_api_url_missing_both_slashes() {
+    fn test_normalize_api_url_missing_both_slashes() {
         let result =
-            RegistryBuilder::normalize_providers_api_url(Some("custom/api".to_string())).unwrap();
+            RegistryBuilder::normalize_api_url(Some("custom/api".to_string()), "").unwrap();
         assert_eq!(result, "/custom/api/");
     }
 
     #[test]
-    fn test_normalize_providers_api_url_empty_error() {
-        let result = RegistryBuilder::normalize_providers_api_url(Some("".to_string()));
+    fn test_normalize_api_url_empty_error() {
+        let result = RegistryBuilder::normalize_api_url(Some("".to_string()), "");
         assert!(result.is_err());
         match result.unwrap_err() {
             RegistryError::InvalidConfig(msg) => {
@@ -1247,6 +1321,21 @@ mod tests {
             .providers_api_base_url("/custom/providers/v2/");
 
         assert!(builder.providers_api_base_url.is_some());
+        let result = builder.build().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_registry_builder_with_custom_modules_url() {
+        let builder = Registry::builder()
+            .github_token("ghp_test123")
+            .gpg_signing_key(
+                "ABCD1234".to_string(),
+                EncodingKey::Pem("test-key".to_string()),
+            )
+            .modules_api_base_url("/custom/modules/v2/");
+
+        assert!(builder.modules_api_base_url.is_some());
         let result = builder.build().await;
         assert!(result.is_ok());
     }
