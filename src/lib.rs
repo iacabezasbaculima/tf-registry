@@ -105,10 +105,11 @@
 
 pub use error::RegistryError;
 
+mod discovery;
 mod error;
-mod handlers;
 mod models;
 mod modules;
+mod providers;
 
 use axum::{Router, routing::get};
 use base64::prelude::*;
@@ -256,11 +257,11 @@ impl Registry {
         let providers_api = Router::new()
             .route(
                 "/{namespace}/{provider_type}/versions",
-                get(handlers::list_versions),
+                get(providers::list_versions),
             )
             .route(
                 "/{namespace}/{provider_type}/{version}/download/{os}/{arch}",
-                get(handlers::find_provider_package),
+                get(providers::find_provider_package),
             );
 
         // See more https://developer.hashicorp.com/terraform/internals/module-registry-protocol
@@ -275,7 +276,7 @@ impl Registry {
             );
 
         Router::new()
-            .route("/.well-known/terraform.json", get(handlers::discovery))
+            .route("/.well-known/terraform.json", get(discovery::discovery))
             .nest(&self.state.providers_api_base_url, providers_api)
             .nest(&self.state.modules_api_base_url, modules_api)
             .layer(middleware)
