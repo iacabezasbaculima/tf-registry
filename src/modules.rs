@@ -1,11 +1,12 @@
 use crate::AppState;
+use crate::models::{ModuleVersion, ModuleVersions, ModuleVersionsRoot};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
 };
 use http::{HeaderMap, header};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 
 #[derive(Deserialize)]
@@ -109,26 +110,45 @@ pub async fn download_module_version(
     let path = format!("/repos/{}/{}/tarball/v{}", namespace, name, version);
 
     let mut headers = HeaderMap::new();
-    headers.append(header::ACCEPT, "application/vnd.github+json".parse().unwrap());
+    headers.append(
+        header::ACCEPT,
+        "application/vnd.github+json".parse().unwrap(),
+    );
 
-    let res = state.no_redirect_github._get_with_headers(path, Some(headers)).await.map_err(|e| {
-        (
-            StatusCode::NOT_FOUND,
-            format!("failed to get repo tarball: {}", e),
-        )
-    })?;
+    let res = state
+        .no_redirect_github
+        ._get_with_headers(path, Some(headers))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to send request to GitHub: {e}"),
+            )
+        })?;
+
+    let status = res.status();
+
+    if !status.is_redirection() && !status.is_success() {
+        let body = state
+            .no_redirect_github
+            .body_to_string(res)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("failed to read body: {e}"),
+                )
+            })?;
+
+        return Err((
+            status,
+            format!("failed to get repo tarball, GitHub returned: {status} {body}"),
+        ));
+    }
 
     // Expect a redirect (302) with Location header
     if let Some(location) = res.headers().get(http::header::LOCATION) {
-        let download_url = location
-            .to_str()
-            .map_err(|e| {
-                (
-                    StatusCode::NOT_FOUND,
-                    format!("invalid location header: {}", e),
-                )
-            })?
-            .to_string();
+        let download_url = location.to_str().unwrap();
         let mut headers = HeaderMap::new();
         headers.insert("X-Terraform-Get", download_url.parse().unwrap());
         Ok(headers)
@@ -138,19 +158,4 @@ pub async fn download_module_version(
             "failed to find Location header".to_string(),
         ))
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ModuleVersionsRoot {
-    pub modules: Vec<ModuleVersions>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ModuleVersions {
-    pub versions: Vec<ModuleVersion>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ModuleVersion {
-    pub version: String,
 }

@@ -5,6 +5,7 @@ use axum::{
 use base64::prelude::*;
 use serde_json::{Value, json};
 use tf_registry::{EncodingKey, Registry};
+use tokio::io;
 use tower::ServiceExt;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
@@ -170,7 +171,7 @@ async fn setup_test_registry(mock_server: &MockServer) -> Registry {
         .expect("Failed to build registry")
 }
 
-async fn setup_test_registry_with_custom_url(
+async fn setup_test_registry_with_custom_providers_url(
     mock_server: &MockServer,
     providers_url: &str,
 ) -> Registry {
@@ -182,6 +183,23 @@ async fn setup_test_registry_with_custom_url(
             EncodingKey::Pem(mock_gpg_public_key()),
         )
         .providers_api_base_url(providers_url)
+        .build()
+        .await
+        .expect("Failed to build registry")
+}
+
+async fn setup_test_registry_with_custom_modules_url(
+    mock_server: &MockServer,
+    modules_url: &str,
+) -> Registry {
+    Registry::builder()
+        .github_base_uri(mock_server.uri())
+        .github_token("ghp_test_token_123")
+        .gpg_signing_key(
+            "ABCD1234EFGH5678".to_string(),
+            EncodingKey::Pem(mock_gpg_public_key()),
+        )
+        .modules_api_base_url(modules_url)
         .build()
         .await
         .expect("Failed to build registry")
@@ -215,12 +233,14 @@ async fn test_discovery_default_url() {
     let json: Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(json["providers.v1"], "/terraform/providers/v1/");
+    assert_eq!(json["modules.v1"], "/terraform/modules/v1/");
 }
 
 #[tokio::test]
-async fn test_discovery_custom_url() {
+async fn test_discovery_custom_providers_url() {
     let mock_server = MockServer::start().await;
-    let registry = setup_test_registry_with_custom_url(&mock_server, "/custom/api/v2/").await;
+    let registry =
+        setup_test_registry_with_custom_providers_url(&mock_server, "/custom/api/v2/").await;
     let app = registry.create_router();
 
     let response = app
@@ -241,6 +261,35 @@ async fn test_discovery_custom_url() {
     let json: Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(json["providers.v1"], "/custom/api/v2/");
+    assert_eq!(json["modules.v1"], "/terraform/modules/v1/");
+}
+
+#[tokio::test]
+async fn test_discovery_custom_modules_url() {
+    let mock_server = MockServer::start().await;
+    let registry =
+        setup_test_registry_with_custom_modules_url(&mock_server, "/custom/api/v2/").await;
+    let app = registry.create_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/.well-known/terraform.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["providers.v1"], "/terraform/providers/v1/");
+    assert_eq!(json["modules.v1"], "/custom/api/v2/");
 }
 
 #[tokio::test]
@@ -248,7 +297,7 @@ async fn test_discovery_url_normalization() {
     let mock_server = MockServer::start().await;
 
     // Test URL without leading slash
-    let registry = setup_test_registry_with_custom_url(&mock_server, "custom/api").await;
+    let registry = setup_test_registry_with_custom_providers_url(&mock_server, "custom/api").await;
     let app = registry.create_router();
 
     let response = app
@@ -271,11 +320,11 @@ async fn test_discovery_url_normalization() {
 }
 
 // ============================================================================
-// List Versions Endpoint Tests
+// List Provider Versions Endpoint Tests
 // ============================================================================
 
 #[tokio::test]
-async fn test_list_versions_single_release() {
+async fn test_list_provider_versions_single_release() {
     let mock_server = MockServer::start().await;
 
     // Mock releases list endpoint with proper pagination structure
@@ -331,7 +380,7 @@ async fn test_list_versions_single_release() {
 }
 
 #[tokio::test]
-async fn test_list_versions_multiple_platforms() {
+async fn test_list_provider_versions_multiple_platforms() {
     let mock_server = MockServer::start().await;
 
     // Mock releases list
@@ -384,7 +433,7 @@ async fn test_list_versions_multiple_platforms() {
 }
 
 #[tokio::test]
-async fn test_list_versions_skips_invalid_semver() {
+async fn test_list_provider_versions_skips_invalid_semver() {
     let mock_server = MockServer::start().await;
 
     Mock::given(method("GET"))
@@ -604,7 +653,234 @@ async fn test_find_provider_package_no_assets() {
 }
 
 // ============================================================================
-// Custom Providers API URL Tests
+// List Module Versions Endpoint Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_list_module_versions_single_release() {
+    let mock_server = MockServer::start().await;
+
+    // Mock releases list endpoint with proper pagination structure
+    Mock::given(method("GET"))
+        .and(path("/repos/octo-org/terraform-module-test/releases"))
+        .and(query_param("per_page", "100"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(vec![mock_release("v1.0.0", vec![])]),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let registry = setup_test_registry(&mock_server).await;
+    let app = registry.create_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/terraform/modules/v1/octo-org/terraform-module-test/module/versions")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(json["modules"].is_array());
+    let modules = json["modules"].as_array().unwrap();
+    assert_eq!(modules.len(), 1);
+    let versions = modules[0]["versions"].as_array().unwrap();
+    assert_eq!(versions.len(), 1);
+    assert_eq!(versions[0]["version"], "1.0.0");
+}
+
+#[tokio::test]
+async fn test_list_module_versions_multiple_releases() {
+    let mock_server = MockServer::start().await;
+
+    // Mock releases list
+    Mock::given(method("GET"))
+        .and(path("/repos/octo-org/terraform-module-test/releases"))
+        .and(query_param("per_page", "100"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(vec![
+            mock_release("v1.0.0", vec![]),
+            mock_release("v2.0.0", vec![]),
+        ]))
+        .mount(&mock_server)
+        .await;
+
+    let registry = setup_test_registry(&mock_server).await;
+    let app = registry.create_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/terraform/modules/v1/octo-org/terraform-module-test/module/versions")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(json["modules"].is_array());
+    let modules = json["modules"].as_array().unwrap();
+    assert_eq!(modules.len(), 1);
+    let versions = modules[0]["versions"].as_array().unwrap();
+    assert_eq!(versions.len(), 2);
+    assert_eq!(versions[0]["version"], "1.0.0");
+    assert_eq!(versions[1]["version"], "2.0.0");
+}
+
+// ============================================================================
+// Download Module Version Endpoint Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_download_module_version_success() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/octo-org/terraform-module-test/tarball/v1.0.0"))
+        .respond_with(ResponseTemplate::new(302).insert_header(
+            "Location",
+            "https://github.com/download/terraform-module-test/v1.0.0.tar.gz",
+        ))
+        .mount(&mock_server)
+        .await;
+
+    let registry = setup_test_registry(&mock_server).await;
+    let app = registry.create_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/terraform/modules/v1/octo-org/terraform-module-test/module/1.0.0/download")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(!response.headers().is_empty());
+    assert_eq!(
+        response.headers().get("X-Terraform-Get").unwrap(),
+        &"https://github.com/download/terraform-module-test/v1.0.0.tar.gz"
+    );
+}
+
+#[tokio::test]
+async fn test_download_module_version_github_api_error() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/octo-org/terraform-module-test/tarball/v999.0.0",
+        ))
+        .respond_with_err(|_req: &wiremock::Request| {
+            io::Error::new(io::ErrorKind::ConnectionReset, "connection reset")
+        })
+        .mount(&mock_server)
+        .await;
+
+    let registry = setup_test_registry(&mock_server).await;
+    let app = registry.create_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/terraform/modules/v1/octo-org/terraform-module-test/module/999.0.0/download")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body_str = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body_str.contains("failed to send request to GitHub"));
+}
+
+#[tokio::test]
+async fn test_download_module_version_tarball_not_found() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/octo-org/terraform-module-test/tarball/v999.0.0",
+        ))
+        .respond_with(ResponseTemplate::new(404).set_body_string("repo tarball not found"))
+        .mount(&mock_server)
+        .await;
+
+    let registry = setup_test_registry(&mock_server).await;
+    let app = registry.create_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/terraform/modules/v1/octo-org/terraform-module-test/module/999.0.0/download")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body_str = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body_str.starts_with("failed to get repo tarball"));
+}
+
+#[tokio::test]
+async fn test_download_module_version_location_header_not_found() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/repos/octo-org/terraform-module-test/tarball/v1.0.0"))
+        .respond_with(ResponseTemplate::new(302))
+        .mount(&mock_server)
+        .await;
+
+    let registry = setup_test_registry(&mock_server).await;
+    let app = registry.create_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/terraform/modules/v1/octo-org/terraform-module-test/module/1.0.0/download")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body_str = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body_str.starts_with("failed to find Location header"));
+}
+
+// ============================================================================
+// Custom Providers & Modules API URL Tests
 // ============================================================================
 
 #[tokio::test]
@@ -612,7 +888,7 @@ async fn test_custom_providers_url_in_routes() {
     let mock_server = MockServer::start().await;
     let custom_url = "/custom/terraform/v2/";
 
-    let registry = setup_test_registry_with_custom_url(&mock_server, custom_url).await;
+    let registry = setup_test_registry_with_custom_providers_url(&mock_server, custom_url).await;
     let app = registry.create_router();
 
     // Test that discovery returns custom URL
@@ -631,6 +907,32 @@ async fn test_custom_providers_url_in_routes() {
         .unwrap();
     let json: Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["providers.v1"], custom_url);
+}
+
+#[tokio::test]
+async fn test_custom_modules_url_in_routes() {
+    let mock_server = MockServer::start().await;
+    let custom_url = "/custom/terraform/v2/";
+
+    let registry = setup_test_registry_with_custom_modules_url(&mock_server, custom_url).await;
+    let app = registry.create_router();
+
+    // Test that discovery returns custom URL
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/.well-known/terraform.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["modules.v1"], custom_url);
 }
 
 // ============================================================================

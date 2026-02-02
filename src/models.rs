@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+// ============================================================================
+// Providers API
+// ============================================================================
+
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Versions {
     pub versions: Vec<Version>,
@@ -60,4 +64,23 @@ pub struct ProviderPackage {
     pub shasums_signature_url: Option<String>,
     pub shasum: Option<String>,
     pub signing_keys: SigningKeys,
+}
+
+// ============================================================================
+// Modules API
+// ============================================================================
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ModuleVersionsRoot {
+    pub modules: Vec<ModuleVersions>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ModuleVersions {
+    pub versions: Vec<ModuleVersion>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ModuleVersion {
+    pub version: String,
 }

@@ -257,7 +257,7 @@ impl Registry {
         let providers_api = Router::new()
             .route(
                 "/{namespace}/{provider_type}/versions",
-                get(providers::list_versions),
+                get(providers::list_provider_versions),
             )
             .route(
                 "/{namespace}/{provider_type}/{version}/download/{os}/{arch}",
