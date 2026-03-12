@@ -49,7 +49,10 @@ jobs:
       - name: Integration Tests
         run: cargo test --test integration
       - name: E2E Tests
-        run: cargo test --test e2e
+        # --test-threads=1 is required because all e2e tests share a single ngrok domain.
+        # Running them in parallel causes tests to compete for the tunnel, resulting in
+        # 400 Bad Request errors on the Terraform service discovery endpoint.
+        run: cargo test --test e2e -- --test-threads=1
         if: github.actor != 'dependabot[bot]'
         env:
           GH_APP_ID: ${{ secrets.GH_APP_ID }}
