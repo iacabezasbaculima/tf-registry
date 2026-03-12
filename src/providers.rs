@@ -12,26 +12,20 @@ use axum::{
 use futures_util::StreamExt;
 use regex::Regex;
 use serde::Deserialize;
-use serde_json::{Value, json};
 use std::sync::Arc;
 
-/// https://developer.hashicorp.com/terraform/internals/provider-registry-protocol#service-discovery
-pub async fn discovery(State(state): State<Arc<AppState>>) -> Json<Value> {
-    Json(json!({"providers.v1": state.providers_api_base_url}))
-}
-
 #[derive(Deserialize)]
-pub struct ParamsListVersions {
+pub struct ParamsListProviderVersions {
     namespace: String,
     provider_type: String,
 }
 
 /// https://developer.hashicorp.com/terraform/internals/provider-registry-protocol#list-available-versions
-pub async fn list_versions(
-    Path(ParamsListVersions {
+pub async fn list_provider_versions(
+    Path(ParamsListProviderVersions {
         namespace,
         provider_type,
-    }): Path<ParamsListVersions>,
+    }): Path<ParamsListProviderVersions>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Versions>, (StatusCode, String)> {
     let provider = "terraform-provider-".to_string() + &provider_type;
@@ -615,17 +609,17 @@ mod tests {
     }
 
     // ========================================================================
-    // ParamsListVersions Tests
+    // ParamsListProviderVersions Tests
     // ========================================================================
 
     #[test]
-    fn test_params_list_versions_deserialization() {
+    fn test_params_list_provider_versions_deserialization() {
         let json = json!({
             "namespace": "hashicorp",
             "provider_type": "aws"
         });
 
-        let params: ParamsListVersions = serde_json::from_value(json).unwrap();
+        let params: ParamsListProviderVersions = serde_json::from_value(json).unwrap();
         assert_eq!(params.namespace, "hashicorp");
         assert_eq!(params.provider_type, "aws");
     }

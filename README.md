@@ -4,12 +4,12 @@
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/iacabezasbaculima/tf-registry/blob/main/LICENSE)
 [![CI](https://github.com/iacabezasbaculima/tf-registry/actions/workflows/ci.yml/badge.svg)](https://github.com/iacabezasbaculima/tf-registry/actions/workflows/ci.yml)
 
-A high-performance, asynchronous implementation of the **[Terraform Provider Registry](https://developer.hashicorp.com/terraform/internals/provider-registry-protocol)** protocol. Built with **Tokio** and **Axum**, it allows you to serve private Terraform providers natively using GitHub Releases as a storage backend.
+A high-performance, asynchronous implementation of the **[Terraform Provider Registry](https://developer.hashicorp.com/terraform/internals/provider-registry-protocol)** and **[Terraform Module Registry](https://developer.hashicorp.com/terraform/internals/module-registry-protocol)** protocols. Built with **Tokio** and **Axum**, it allows you to serve private Terraform providers and modules natively using GitHub Releases as a storage backend.
 
 - **Cost-Effective**: Replace expensive IaC management platforms with a tiny, serverless-friendly binary.
 - **Zero Storage Overhead**: Uses GitHub Releases as the source of truth. No S3 buckets or databases to manage.
-- **Native Experience**: Supports the full `terraform init` workflow. No more network or file mirror hacks or manual binary injections.
-- **Built for Scale**: Leveraging **Axum** and **Tokio**, it handles concurrent provider downloads in large CI/CD pipelines with minimal CPU/RAM usage.
+- **Native Experience**: Supports the full `terraform init` workflow for both providers and modules. No more network or file mirror hacks or manual binary injections.
+- **Built for Scale**: Leveraging **Axum** and **Tokio**, it handles concurrent provider and module downloads in large CI/CD pipelines with minimal CPU/RAM usage.
 
 ## 🚀 Why `tf-registry`?
 
@@ -36,7 +36,8 @@ Built with **Tokio** and **Axum**, this registry is designed to handle high-conc
 
 ## 🛠 Features
 
-- ✅ Protocol Compliant: Fully implements the Provider Registry Protocol.
+- ✅ Provider Registry: Fully implements the Terraform Provider Registry Protocol.
+- ✅ Module Registry: Fully implements the Terraform Module Registry Protocol, supporting both public and private GitHub repositories.
 - ✅ GitHub Integration: Powered by `octocrab` for efficient asset discovery and fetching.
 - ✅ GPG Signing Support: Automates the delivery of GPG public keys so Terraform can verify provider authenticity.
 
@@ -44,8 +45,9 @@ Built with **Tokio** and **Axum**, this registry is designed to handle high-conc
 
 ### 1. Requirements
 
-- A GitHub Personal Access Token (PAT) with access to your private provider repositories.
+- A GitHub Personal Access Token (PAT) or GitHub App with access to your repositories.
 - A GPG Public Key (Base64-encoded or PEM) used to sign your provider binaries.
+- For private module repositories, ensure your PAT or GitHub App has read access to those repos.
 
 ### 2. Installation
 
@@ -62,7 +64,7 @@ use tf_registry::Registry;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let token = std::env::var("GITHUB_TOKEN")?;
+    let token = std::env::var("GH_TOKEN")?;
     let gpg_key_id = std::env::var("GPG_KEY_ID")?;
     let gpg_public_key_base64 = std::env::var("GPG_PUBLIC_KEY_BASE64")?;
 
@@ -90,10 +92,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 📂 Architecture & Workflow
 
+### Providers
+
 1. **Terraform CLI** requests a provider (e.g., `registry.example.com/my-org/my-provider`).
 2. `tf-registry` queries the GitHub API to find matching releases and assets (zip files and SHA sums).
 3. `tf-registry` returns the signed metadata, pointing Terraform to the GitHub download URL.
 4. **Terraform** verifies the download using the GPG key provided by the registry.
+
+### Modules
+
+Module addresses follow the format `<registry>/<namespace>/<name>/<system>`, where `system` identifies the remote platform the module targets (e.g. `aws`, `azurerm`, `kubernetes`). It commonly matches a provider type name but can be any keyword that makes sense for your registry.
+
+1. **Terraform CLI** requests a module (e.g., `registry.example.com/my-org/my-module/aws`).
+2. `tf-registry` queries the GitHub Releases API to list available versions, mapping each release tag to a module version.
+3. For downloads, `tf-registry` resolves the GitHub tarball URL for the requested tag and returns it via the `X-Terraform-Get` header.
+4. **Terraform** downloads the module source directly from GitHub. Private repositories require a PAT or GitHub App with read access to those repos.
 
 ## License
 

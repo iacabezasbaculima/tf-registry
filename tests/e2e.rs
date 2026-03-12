@@ -5,13 +5,9 @@ use tf_registry::{EncodingKey, Registry};
 
 const TESTDATA_DIR: &str = "./tests/e2e/testdata";
 
-#[tokio::test]
-async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
-{
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
+type E2EResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
+async fn run_terraform_init(fixture: &str) -> E2EResult {
     // 0. Check terraform binary is available
     let tf_bin = if cfg!(windows) {
         "terraform.exe"
@@ -50,38 +46,33 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
     });
 
     // 3. Set up ngrok tunnel
+    let domain = std::env::var("NGROK_DOMAIN")?;
     let session = ngrok::Session::builder()
         .authtoken_from_env()
         .connect()
         .await?;
-
-    tracing::info!("connected to ngrok session");
-
-    let domain = std::env::var("NGROK_DOMAIN")?;
     let _tunnel = session
         .http_endpoint()
         .domain(&domain)
+        // Pooling allows multiple test instances to share the same domain simultaneously,
+        // each forwarding to their own local server port. This enables parallel test execution.
+        .pooling_enabled(true)
         // This acts as the "client" forwarding to the local tf-registry server
         .listen_and_forward(url::Url::parse(&format!("http://{}", addr))?)
         .await?;
 
-    tracing::info!("ngrok tunnel established");
+    tracing::info!("ngrok tunnel established at https://{}", domain);
 
-    // 4. Copy .tf fixture to temporary work dir
+    // 4. Copy .tf fixture to a temporary work dir, substituting the ngrok domain
     let td = tempdir()?;
     let td_path = td.path();
 
-    tracing::info!("created temporary test directory: {:?}", td_path);
-
-    // Replace ngrok domain
     // Use PathBuf to ensure the paths work on Windows systems where the separator is \
-    let fixture_source = PathBuf::from(TESTDATA_DIR).join("provider.tf");
-    let fixture_content = fs::read_to_string(&fixture_source)?;
-    let replaced_fixture = fixture_content.replace("{{NGROK_DOMAIN}}", &domain);
-    let fixture_dest = td_path.join("main.tf");
-    fs::write(&fixture_dest, replaced_fixture)?;
-
-    tracing::info!("copied .tf fixture to temporary working dir");
+    let fixture_content = fs::read_to_string(PathBuf::from(TESTDATA_DIR).join(fixture))?;
+    fs::write(
+        td_path.join("main.tf"),
+        fixture_content.replace("{{NGROK_DOMAIN}}", &domain),
+    )?;
 
     let has_tf_files = fs::read_dir(td_path)?
         .filter_map(|entry| entry.ok())
@@ -91,24 +82,8 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
         return Err("no .tf fixture files found in the working directory".into());
     }
 
-    // 5. Run 'terraform version'
-    let tf_version_status = tokio::process::Command::new(tf_bin)
-        .arg("version")
-        .env("TF_LOG", "INFO")
-        .env("TF_IN_AUTOMATION", "true")
-        .status()
-        .await?;
-
-    if !tf_version_status.success() {
-        return Err(format!(
-            "terraform version failed with status: {}",
-            tf_version_status
-        )
-        .into());
-    }
-
-    // 6. Run 'terraform init'
-    let tf_init_status = tokio::process::Command::new(tf_bin)
+    // 5. Run 'terraform init'
+    let status = tokio::process::Command::new(tf_bin)
         .arg("init")
         .current_dir(td_path)
         .env("TF_LOG", "INFO")
@@ -116,9 +91,25 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
         .status()
         .await?;
 
-    if !tf_init_status.success() {
-        return Err(format!("terraform init failed with status: {}", tf_init_status).into());
+    if !status.success() {
+        return Err(format!("terraform init failed with status: {}", status).into());
     }
 
     Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_terraform_init_provider() -> E2EResult {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .try_init();
+    run_terraform_init("provider.tf").await
+}
+
+#[tokio::test]
+async fn test_e2e_terraform_init_module() -> E2EResult {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .try_init();
+    run_terraform_init("module.tf").await
 }
