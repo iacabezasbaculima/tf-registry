@@ -51,7 +51,7 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let registry = Registry::builder()
-//!     .github_token(std::env::var("GITHUB_TOKEN")?)
+//!     .github_token(std::env::var("GH_TOKEN")?)
 //!     .gpg_signing_key(
 //!         "ABCD1234EFGH5678".to_string(),
 //!         EncodingKey::Pem(std::env::var("GPG_PUBLIC_KEY")?)
@@ -578,7 +578,7 @@ impl RegistryBuilder {
     /// # use tf_registry::Registry;
     /// # fn example() -> Result<(), std::env::VarError> {
     /// let builder = Registry::builder()
-    ///     .github_token(std::env::var("GITHUB_TOKEN")?);
+    ///     .github_token(std::env::var("GH_TOKEN")?);
     /// # Ok(())
     /// # }
     /// ```

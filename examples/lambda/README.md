@@ -25,7 +25,15 @@ Second, call the function directly with cURL or any other HTTP client. For examp
 curl http://localhost:9000/.well-known/terraform.json
 
 # Response
-{"providers.v1":"/terraform/providers/v1/"}                                      
+{"providers.v1":"/terraform/providers/v1/","modules.v1":"/terraform/modules/v1/"}
+
+# Provider registry
+curl http://localhost:9000/terraform/providers/v1/<namespace>/<provider>/versions
+curl http://localhost:9000/terraform/providers/v1/<namespace>/<provider>/<version>/download/<os>/<arch>
+
+# Module registry
+curl http://localhost:9000/terraform/modules/v1/<namespace>/<name>/<system>/versions
+curl http://localhost:9000/terraform/modules/v1/<namespace>/<name>/<system>/<version>/download
 ```
 
 Read more about running the local server in [the Cargo Lambda documentation for the `watch` command](https://www.cargo-lambda.info/commands/watch.html).

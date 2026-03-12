@@ -64,7 +64,7 @@ use tf_registry::Registry;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let token = std::env::var("GITHUB_TOKEN")?;
+    let token = std::env::var("GH_TOKEN")?;
     let gpg_key_id = std::env::var("GPG_KEY_ID")?;
     let gpg_public_key_base64 = std::env::var("GPG_PUBLIC_KEY_BASE64")?;
 
