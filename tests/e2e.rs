@@ -8,9 +8,9 @@ const TESTDATA_DIR: &str = "./tests/e2e/testdata";
 #[tokio::test]
 async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 {
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
-        .init();
+        .try_init();
 
     // 0. Check terraform binary is available
     let tf_bin = if cfg!(windows) {
@@ -125,9 +125,9 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
 
 #[tokio::test]
 async fn test_e2e_terraform_init_module() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
-        .init();
+        .try_init();
 
     // 0. Check terraform binary is available
     let tf_bin = if cfg!(windows) {
