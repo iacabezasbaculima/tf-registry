@@ -146,9 +146,21 @@ pub async fn download_module_version(
         ));
     }
 
-    // Expect a redirect (302) with Location header
+    // GitHub's tarball API redirects to a codeload.github.com URL of the form:
+    //   https://codeload.github.com/{owner}/{repo}/legacy.tar.gz/refs/tags/{ref}
+    //
+    // go-getter (used by Terraform) determines the archive type from the file extension
+    // at the END of the URL path. Since `legacy.tar.gz` appears mid-path (not at the end),
+    // go-getter does not recognise it as a tarball and tries to parse the raw gzip bytes
+    // as XML, producing: "XML syntax error on line 2: illegal character code U+001F".
+    //
+    // The fix is to append `?archive=tar.gz` so go-getter is explicitly told the format,
+    // regardless of where `.tar.gz` appears in the path. This also preserves any existing
+    // query parameters (e.g. signed tokens for private repos).
     if let Some(location) = res.headers().get(http::header::LOCATION) {
-        let download_url = location.to_str().unwrap();
+        let location_url = location.to_str().unwrap();
+        let sep = if location_url.contains('?') { '&' } else { '?' };
+        let download_url = format!("{}{}archive=tar.gz", location_url, sep);
         let mut headers = HeaderMap::new();
         headers.insert("X-Terraform-Get", download_url.parse().unwrap());
         Ok(headers)

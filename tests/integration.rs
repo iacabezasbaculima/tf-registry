@@ -879,7 +879,7 @@ async fn test_download_module_version_success() {
     assert!(!response.headers().is_empty());
     assert_eq!(
         response.headers().get("X-Terraform-Get").unwrap(),
-        &"https://github.com/download/terraform-module-test/v1.0.0.tar.gz"
+        &"https://github.com/download/terraform-module-test/v1.0.0.tar.gz?archive=tar.gz"
     );
 }
 
@@ -1013,7 +1013,7 @@ async fn test_download_module_version_success_via_200_with_location() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         response.headers().get("X-Terraform-Get").unwrap(),
-        &"https://github.com/download/terraform-module-test/v1.0.0.tar.gz"
+        &"https://github.com/download/terraform-module-test/v1.0.0.tar.gz?archive=tar.gz"
     );
 }
 
