@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/iacabezasbaculima/tf-registry/compare/v0.1.0...v0.1.1) - 2026-03-12
+
+### Added
+
+- Add Terraform Module Registry Protocol support ([#11](https://github.com/iacabezasbaculima/tf-registry/pull/11))
+
+### Other
+
+- *(deps)* Bump hashicorp/setup-terraform from 3.1.2 to 4.0.0 ([#9](https://github.com/iacabezasbaculima/tf-registry/pull/9))
+- *(deps)* Bump release-plz/action from 0.5.120 to 0.5.128 ([#10](https://github.com/iacabezasbaculima/tf-registry/pull/10))
+- Add E2E tests with ngrok ([#3](https://github.com/iacabezasbaculima/tf-registry/pull/3))
+
 ## [0.1.0](https://github.com/iacabezasbaculima/tf-registry/releases/tag/v0.1.0) - 2026-01-12
 
 ### Added
