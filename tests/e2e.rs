@@ -124,8 +124,7 @@ async fn test_e2e_terraform_init_provider() -> Result<(), Box<dyn std::error::Er
 }
 
 #[tokio::test]
-async fn test_e2e_terraform_init_module() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
-{
+async fn test_e2e_terraform_init_module() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();
