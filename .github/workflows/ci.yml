@@ -49,9 +49,9 @@ jobs:
       #   run: cargo clean --doc # Removes documentation artifacts which can be large
 
   e2e:
-    # Runs in a dedicated job (not the matrix) so only one instance ever runs at a time.
-    # All e2e tests share a single ngrok domain — running them from multiple matrix jobs
-    # simultaneously causes ERR_NGROK_334 ("endpoint already online").
+    # Runs in a dedicated job (not the matrix) so it never competes with other jobs for the ngrok domain.
+    # Tests within this job run in parallel — each test pools its own ngrok endpoint on the shared domain,
+    # forwarding to its own local server port.
     runs-on: ubuntu-latest
     needs: build
     if: github.actor != 'dependabot[bot]'
@@ -69,8 +69,7 @@ jobs:
         with:
           terraform_wrapper: false
       - name: E2E Tests
-        # --test-threads=1 serialises tests within this job since they share the same ngrok domain.
-        run: cargo test --test e2e -- --test-threads=1
+        run: cargo test --test e2e
         env:
           GH_APP_ID: ${{ secrets.GH_APP_ID }}
           GH_APP_PRIVATE_KEY_BASE64: ${{ secrets.GH_APP_PRIVATE_KEY_BASE64 }}

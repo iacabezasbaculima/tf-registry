@@ -67,9 +67,9 @@ test-unit:
 test-integration:
     cargo test --test integration
 
-# Run e2e tests only (requires ngrok + Terraform; serialised to avoid domain conflicts)
+# Run e2e tests only (requires ngrok + Terraform)
 test-e2e:
-    cargo test --test e2e -- --test-threads=1
+    cargo test --test e2e
 
 # ── Curl ─────────────────────────────────────────────────────────────────────
 

@@ -54,6 +54,9 @@ async fn run_terraform_init(fixture: &str) -> E2EResult {
     let _tunnel = session
         .http_endpoint()
         .domain(&domain)
+        // Pooling allows multiple test instances to share the same domain simultaneously,
+        // each forwarding to their own local server port. This enables parallel test execution.
+        .pooling_enabled(true)
         // This acts as the "client" forwarding to the local tf-registry server
         .listen_and_forward(url::Url::parse(&format!("http://{}", addr))?)
         .await?;
