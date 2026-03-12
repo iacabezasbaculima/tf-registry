@@ -6,8 +6,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    let app_id = std::env::var("GITHUB_APP_ID")?.parse::<u64>()?;
-    let private_key_base64 = std::env::var("GITHUB_PRIVATE_KEY_BASE64")?;
+    let app_id = std::env::var("GH_APP_ID")?.parse::<u64>()?;
+    let private_key_base64 = std::env::var("GH_APP_PRIVATE_KEY_BASE64")?;
     let gpg_key_id = std::env::var("GPG_KEY_ID")?;
     let gpg_public_key_base64 = std::env::var("GPG_PUBLIC_KEY_BASE64")?;
 

@@ -368,7 +368,7 @@ struct AppState {
 /// let registry = Registry::builder()
 ///     .github_app(
 ///         123456,
-///         EncodingKey::Base64(std::env::var("GITHUB_APP_PRIVATE_KEY")?)
+///         EncodingKey::Base64(std::env::var("GH_APP_PRIVATE_KEY")?)
 ///     )
 ///     .gpg_signing_key(
 ///         "ABCD1234".to_string(),
@@ -570,14 +570,14 @@ impl RegistryBuilder {
     /// let builder = Registry::builder()
     ///     .github_app(
     ///         123456,
-    ///         EncodingKey::Pem(std::env::var("GITHUB_APP_PRIVATE_KEY")?)
+    ///         EncodingKey::Pem(std::env::var("GH_APP_PRIVATE_KEY")?)
     ///     );
     ///
     /// // Using base64-encoded format
     /// let builder = Registry::builder()
     ///     .github_app(
     ///         123456,
-    ///         EncodingKey::Base64(std::env::var("GITHUB_APP_PRIVATE_KEY_B64")?)
+    ///         EncodingKey::Base64(std::env::var("GH_APP_PRIVATE_KEY_B64")?)
     ///     );
     /// # Ok(())
     /// # }
