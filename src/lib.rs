@@ -1,13 +1,16 @@
-//! A Terraform Provider Registry implementation backed by GitHub Releases.
+//! A Terraform Provider and Module Registry implementation backed by GitHub Releases.
 //!
-//! This crate provides a complete implementation of the [Terraform Provider Registry Protocol](https://developer.hashicorp.com/terraform/internals/provider-registry-protocol),
-//! allowing you to host Terraform provider packages using GitHub Releases as the storage backend.
+//! This crate provides a complete implementation of both the
+//! [Terraform Provider Registry Protocol](https://developer.hashicorp.com/terraform/internals/provider-registry-protocol)
+//! and the [Terraform Module Registry Protocol](https://developer.hashicorp.com/terraform/internals/module-registry-protocol),
+//! allowing you to host Terraform providers and modules using GitHub Releases as the storage backend.
 //!
 //! # Features
 //!
 //! - **GitHub Authentication**: Supports both Personal Access Tokens and GitHub App authentication.
 //! - **GPG Signing**: Provider package verification using GPG signatures.
-//! - **Standard Protocol**: Full compliance with Terraform's Provider Registry Protocol.
+//! - **Provider Registry**: Full compliance with Terraform's Provider Registry Protocol.
+//! - **Module Registry**: Full compliance with Terraform's Module Registry Protocol, supporting both public and private repositories.
 //! - **Flexible Configuration**: Builder pattern for easy setup and customization.
 //!
 //! # Quick Start
@@ -40,7 +43,8 @@
 //!
 //! # GitHub App Authentication
 //!
-//! For production deployments, GitHub App authentication is recommended:
+//! For production deployments, GitHub App authentication is recommended over a PAT due to
+//! better security and higher rate limits:
 //!
 //! ```rust,no_run
 //! use tf_registry::{Registry, EncodingKey};
@@ -81,16 +85,25 @@
 //!
 //! # GitHub Release Requirements
 //!
-//! For the registry to work correctly, your GitHub releases must include:
+//! ## Providers
+//!
+//! For providers, each GitHub release must include:
 //!
 //! 1. **Provider packages**: `terraform-provider-{name}_{version}_{os}_{arch}.zip`
 //! 2. **Checksums file**: `terraform-provider-{name}_{version}_SHA256SUMS`
 //! 3. **Signature file**: `terraform-provider-{name}_{version}_SHA256SUMS.sig`
 //! 4. **Registry manifest**: A `terraform-registry-manifest.json` file in the repository root
 //!
+//! ## Modules
+//!
+//! For modules, the registry maps each GitHub Release tag to a module version. No special
+//! release assets are required — the module source code is downloaded directly from the
+//! GitHub tarball API. To access private repositories, configure the registry with a PAT or
+//! GitHub App that has read access to those repos.
+//!
 //! # Example Terraform Usage
 //!
-//! Once your registry is running, configure Terraform to use it:
+//! ## Provider
 //!
 //! ```hcl
 //! terraform {
@@ -100,6 +113,20 @@
 //!       version = "1.0.0"
 //!     }
 //!   }
+//! }
+//! ```
+//!
+//! ## Module
+//!
+//! The module source address follows the format `<registry>/<namespace>/<name>/<system>`,
+//! where `system` is the name of the remote system the module targets (e.g. `aws`, `azurerm`,
+//! `kubernetes`). It commonly matches a provider type name but can be any keyword that makes
+//! sense for your registry's organisation.
+//!
+//! ```hcl
+//! module "mymodule" {
+//!   source  = "registry.example.com/myorg/mymodule/aws"
+//!   version = "1.0.0"
 //! }
 //! ```
 
