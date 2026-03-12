@@ -41,10 +41,31 @@
 //! }
 //! ```
 //!
+//! # GitHub PAT Authentication
+//!
+//! The simplest way to authenticate. Suitable for local development or single-user setups:
+//!
+//! ```rust,no_run
+//! use tf_registry::{Registry, EncodingKey};
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let registry = Registry::builder()
+//!     .github_token(std::env::var("GITHUB_TOKEN")?)
+//!     .gpg_signing_key(
+//!         "ABCD1234EFGH5678".to_string(),
+//!         EncodingKey::Pem(std::env::var("GPG_PUBLIC_KEY")?)
+//!     )
+//!     .build()
+//!     .await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! # GitHub App Authentication
 //!
-//! For production deployments, GitHub App authentication is recommended over a PAT due to
-//! better security and higher rate limits:
+//! Recommended for production deployments due to better security, higher rate limits,
+//! and fine-grained repository access control:
 //!
 //! ```rust,no_run
 //! use tf_registry::{Registry, EncodingKey};
