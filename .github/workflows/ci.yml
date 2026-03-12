@@ -37,23 +37,40 @@ jobs:
         uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
           key: ${{ matrix.os }}-${{ matrix.channel }}
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
-        with:
-          # the wrapper can sometimes swallow the exit codes Rust e2e tests expect
-          terraform_wrapper: false
       - name: Build
         run: cargo build --all-targets
       - name: Unit Tests
         run: cargo test --lib
       - name: Integration Tests
         run: cargo test --test integration
+      # Uncomment if needed
+      # - name: Clean up large artifacts
+      #   if: always()
+      #   run: cargo clean --doc # Removes documentation artifacts which can be large
+
+  e2e:
+    # Runs in a dedicated job (not the matrix) so only one instance ever runs at a time.
+    # All e2e tests share a single ngrok domain — running them from multiple matrix jobs
+    # simultaneously causes ERR_NGROK_334 ("endpoint already online").
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Rust
+        run: rustup default stable
+      - name: Rust Cache
+        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          key: ubuntu-stable
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_wrapper: false
       - name: E2E Tests
-        # --test-threads=1 is required because all e2e tests share a single ngrok domain.
-        # Running them in parallel causes tests to compete for the tunnel, resulting in
-        # 400 Bad Request errors on the Terraform service discovery endpoint.
+        # --test-threads=1 serialises tests within this job since they share the same ngrok domain.
         run: cargo test --test e2e -- --test-threads=1
-        if: github.actor != 'dependabot[bot]'
         env:
           GH_APP_ID: ${{ secrets.GH_APP_ID }}
           GH_APP_PRIVATE_KEY_BASE64: ${{ secrets.GH_APP_PRIVATE_KEY_BASE64 }}
@@ -61,7 +78,3 @@ jobs:
           GPG_PUBLIC_KEY_BASE64: ${{ secrets.GPG_PUBLIC_KEY_BASE64 }}
           NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
           NGROK_DOMAIN: ${{ secrets.NGROK_DOMAIN }}
-      # Uncomment if needed
-      # - name: Clean up large artifacts
-      #   if: always()
-      #   run: cargo clean --doc # Removes documentation artifacts which can be large
